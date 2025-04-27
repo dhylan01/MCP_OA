@@ -1,62 +1,12 @@
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-import fs from 'fs';
-import path from 'path';
-import Parser from "tree-sitter";
-import Python from "tree-sitter-python";
-import TS from "tree-sitter-typescript";
-
-const TypeScript = TS.typescript;
-const Tsx = TS.tsx;
-
-// Get the current directory
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-// New helper function to get all files recursively
-function getAllFiles(dirPath, fileTypes = ['.py', '.ts', '.tsx'], fileList = []) {
-    const files = fs.readdirSync(dirPath);
-    
-    for (const file of files) {
-        const filePath = path.join(dirPath, file);
-        const stat = fs.statSync(filePath);
-        
-        if (stat.isDirectory() && !file.startsWith('.')) {
-            // Recurse into subdirectories, but skip hidden directories
-            getAllFiles(filePath, fileTypes, fileList);
-        } else {
-            const ext = path.extname(filePath);
-            if (fileTypes.includes(ext)) {
-                fileList.push(filePath);
-            }
-        }
-    }
-    
-    return fileList;
-}
+import fs from "fs";
+import path from "path";
 
 // Function to process a single file
 async function processFile(filePath, functionName) {
     try {
         const fileContent = fs.readFileSync(filePath, "utf-8");
-        const parser = new Parser();
-        const fileExtension = path.extname(filePath);
-        let language;
         
-        if (fileExtension === ".py") {
-            language = Python;
-        } else if (fileExtension === ".ts") {
-            language = TypeScript;
-        } else if (fileExtension === ".tsx") {
-            language = Tsx;
-        } else {
-            return null; // Unsupported file type
-        }
-        
-        parser.setLanguage(language);
-        const tree = parser.parse(fileContent);
-        
-        // Simple string-based search as a fallback approach
+        // Simple string-based search approach
         const lines = [];
         const fileLines = fileContent.split('\n');
         
@@ -83,100 +33,126 @@ async function processFile(filePath, functionName) {
     }
 }
 
-async function functionLookupHandler(params) {
-    const { functionName, filePath } = params;
-    const fileTypes = params.fileTypes || ['.py', '.ts', '.tsx'];
-
-    // Check if filePath is a directory or a file
-    const stats = fs.statSync(filePath);
-    
-    if (stats.isDirectory()) {
-        // Search entire directory recursively
-        const resolvedPath = path.resolve(filePath);
-        const allFiles = getAllFiles(resolvedPath, fileTypes);
+// Function to find all files of specified types recursively
+function getAllFiles(dirPath, fileTypes = ['.py', '.ts', '.tsx'], fileList = []) {
+    try {
+        const files = fs.readdirSync(dirPath);
         
-        if (allFiles.length === 0) {
-            return `No supported files found in directory: ${filePath}`;
-        }
-        
-        const results = [];
-        let foundCount = 0;
-        
-        // Process all files and collect results
-        for (const file of allFiles) {
-            const result = await processFile(file, functionName);
-            if (result) {
-                foundCount++;
-                results.push(`Function '${functionName}' found in '${result.file}' on lines: ${result.lines.join(", ")}`);
+        for (const file of files) {
+            const filePath = path.join(dirPath, file);
+            const stat = fs.statSync(filePath);
+            
+            if (stat.isDirectory() && !file.startsWith('.')) {
+                // Recurse into subdirectories, but skip hidden directories
+                getAllFiles(filePath, fileTypes, fileList);
+            } else {
+                const ext = path.extname(filePath);
+                if (fileTypes.includes(ext)) {
+                    fileList.push(filePath);
+                }
             }
         }
-        
-        if (foundCount === 0) {
-            return `Function '${functionName}' not found in any files in ${filePath}`;
-        }
-        
-        return `Found ${foundCount} files containing function '${functionName}':\n\n${results.join("\n\n")}`;
-    } else {
-        // Process single file (original implementation)
-        const resolvedPath = path.resolve(filePath);
-        const result = await processFile(resolvedPath, functionName);
-        
-        if (!result) {
-            return `Function '${functionName}' not found in ${filePath}`;
-        }
-        
-        return `Function '${functionName}' found in '${filePath}' on lines: ${result.lines.join(", ")}`;
+    } catch (error) {
+        console.error(`Error reading directory ${dirPath}:`, error);
     }
+    
+    return fileList;
 }
 
-// Test cases
+// Define test cases
 const testCases = [
-  {
-    name: 'Find Python function declaration',
-    params: {
-      functionName: 'hello_world',
-      filePath: './test_code.py'
+    {
+        name: "Find Python function declaration",
+        file: "./test_code.py",
+        functionName: "hello_world",
+        expectedLines: [1, 9, 11]
+    },
+    {
+        name: "Find Python function usage",
+        file: "./test_code.py",
+        functionName: "calculate_sum",
+        expectedLines: [5, 13]
+    },
+    {
+        name: "Function that does not exist",
+        file: "./test_code.py",
+        functionName: "nonexistent_function",
+        expectedResult: null
     }
-  },
-  {
-    name: 'Find Python function usage',
-    params: {
-      functionName: 'calculate_sum',
-      filePath: './test_code.py'
-    }
-  },
-  {
-    name: 'Function that does not exist',
-    params: {
-      functionName: 'nonexistent_function',
-      filePath: './test_code.py'
-    }
-  },
-  {
-    name: 'Directory search',
-    params: {
-      functionName: 'functionLookupHandler',
-      filePath: './',
-      fileTypes: ['.js']
-    }
-  }
 ];
 
-// Run tests
+// Run a directory search test too
+const directoryTest = {
+    name: "Directory search",
+    functionName: "functionLookupHandler",
+    directory: "./",
+    expectedResult: null
+};
+
+// Function to run all tests
 async function runTests() {
-  console.log('Starting direct function tests...\n');
-  
-  for (const test of testCases) {
-    console.log(`Running test: ${test.name}`);
-    try {
-      const result = await functionLookupHandler(test.params);
-      console.log(`Result: ${result}\n`);
-    } catch (error) {
-      console.error(`Error in test "${test.name}":`, error);
+    console.log("Starting direct function tests...\n");
+    
+    for (const test of testCases) {
+        console.log(`Running test: ${test.name}`);
+        
+        const result = await processFile(test.file, test.functionName);
+        
+        if (result === null) {
+            console.log(`Result: Function '${test.functionName}' not found in ${test.file}`);
+            
+            if (test.expectedResult === null) {
+                console.log("✅ Test passed: Function correctly not found\n");
+            } else {
+                console.log(`❌ Test failed: Expected to find function on lines: ${test.expectedLines.join(", ")}\n`);
+            }
+        } else {
+            console.log(`Result: Function '${test.functionName}' found in '${result.file}' on lines: ${result.lines.join(", ")}`);
+            
+            if (test.expectedResult === null) {
+                console.log(`❌ Test failed: Expected no results but found lines: ${result.lines.join(", ")}\n`);
+            } else {
+                // Check if found lines match expected lines
+                const missingLines = test.expectedLines.filter(line => !result.lines.includes(line));
+                const extraLines = result.lines.filter(line => !test.expectedLines.includes(line));
+                
+                if (missingLines.length === 0 && extraLines.length === 0) {
+                    console.log("✅ Test passed: Found all expected lines\n");
+                } else {
+                    console.log("❌ Test failed:");
+                    if (missingLines.length > 0) {
+                        console.log(`  Missing lines: ${missingLines.join(", ")}`);
+                    }
+                    if (extraLines.length > 0) {
+                        console.log(`  Extra lines: ${extraLines.join(", ")}`);
+                    }
+                    console.log("");
+                }
+            }
+        }
     }
-  }
-  
-  console.log('All tests completed');
+    
+    // Run directory search test
+    console.log(`Running test: ${directoryTest.name}`);
+    const files = getAllFiles(directoryTest.directory);
+    let found = false;
+    
+    for (const file of files) {
+        const result = await processFile(file, directoryTest.functionName);
+        if (result) {
+            found = true;
+            console.log(`Result: Function '${directoryTest.functionName}' found in '${result.file}' on lines: ${result.lines.join(", ")}`);
+        }
+    }
+    
+    if (!found) {
+        console.log(`Result: Function '${directoryTest.functionName}' not found in any files in ${directoryTest.directory}`);
+    }
+    
+    console.log("\nAll tests completed");
 }
 
-runTests(); 
+// Run all tests
+runTests().catch(error => {
+    console.error("Error during tests:", error);
+}); 

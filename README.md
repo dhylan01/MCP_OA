@@ -86,7 +86,11 @@ To manually test the server:
 
 1. Build the server: `npm run build`
 2. Create a test file (e.g., `test_code.py`) with some function definitions and calls
-3. Run: `node test_server.js`
+3. Run: `node direct_test.js`
+
+**Important Note**:  
+Due to MCP connection issues encountered during testing, you should use `direct_test.js` instead of `test_server.js` for local testing.  
+The AMP service was also experiencing partial outages and instability at the time this function was developed and tested, which may have impacted full integration testing.
 
 ## Troubleshooting
 
